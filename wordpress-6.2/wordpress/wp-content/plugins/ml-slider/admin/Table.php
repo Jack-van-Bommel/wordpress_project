@@ -9,6 +9,7 @@ class MetaSlider_Admin_Table extends WP_List_table
 {
     public function prepare_items()
     {
+        $this->process_action();
         $columns = $this->get_columns();
         $hidden = array();
         $sortable = $this->get_sortable_columns();
@@ -34,9 +35,28 @@ class MetaSlider_Admin_Table extends WP_List_table
         ));
     }
 
+    protected function get_views() {
+        global $wpdb;
+        $views = array();
+        $paramaters = array('action', 'slideshows', 'post_status', '_wpnonce');
+        $current = ( !empty($_REQUEST['post_status']) ? $_REQUEST['post_status'] : 'all');
+   
+        $all = remove_query_arg($paramaters);
+        $class = ($current == 'all' ? ' class="current"' :'');
+        $views['all'] = "<a href='" . esc_url($all) . "' {$class} >" . esc_html__('Published', 'ml-slider') . " (" . $this->slideshow_count('all') . ")</a>";
+        
+        if ($this->slideshow_count('trash') != 0) {
+            $class = ($current == 'trash' ? ' class="current"' :'');
+            $views['trash'] = "<a href='" . esc_url($all) . "&post_status=trash' {$class} >" . esc_html__('Trash', 'ml-slider') . " (" . $this->slideshow_count('trash') . ")</a>";
+        }
+        
+        return $views;
+    }
+
     public function get_columns()
     {
         $columns = array(
+            'cb' => '<input type="checkbox" />',
             'slides' => esc_html__('Preview', 'ml-slider'),
             'post_title' => esc_html__('Title', 'ml-slider'),
             'post_date' => esc_html__('Created', 'ml-slider'),
@@ -45,6 +65,23 @@ class MetaSlider_Admin_Table extends WP_List_table
 
         return $columns;
     }
+
+    public function get_bulk_actions()
+    {
+        if (isset($_REQUEST['post_status']) && $_REQUEST['post_status'] == "trash") {
+            $actions = array(
+                'restore'    => __('Restore', 'ml-slider'),
+                'permanent'  => __('Delete Permanently', 'ml-slider')
+            );
+        } else {
+            $actions = array(
+                'delete'    => __('Trash', 'ml-slider')
+            );
+        }
+        
+        return $actions;
+    }
+
 
     public function get_hidden_columns()
     {
@@ -83,7 +120,7 @@ class MetaSlider_Admin_Table extends WP_List_table
     public function shortcodeColumn($slideshowID)
     {
         return ('<metaslider-shortcode inline-template>
-        <pre id="shortcode" ref="shortcode" dir="ltr" class="text-gray text-sm"><div @click.prevent="copyShortcode($event)" class="text-orange cursor-pointer whitespace-normal inline">[metaslider id="{{'. esc_attr($slideshowID) .'}}"]</div></pre>
+        <pre id="shortcode" ref="shortcode" dir="ltr" class="text-gray text-sm"><div @click.prevent="copyShortcode($event)" class="text-orange cursor-pointer whitespace-normal inline">[metaslider id="'. esc_attr($slideshowID) .'"]</div></pre>
         </metaslider-shortcode>');
     }
 
@@ -94,48 +131,110 @@ class MetaSlider_Admin_Table extends WP_List_table
         );
     }
 
-    protected function process_bulk_action()
+    protected function process_action()
     {
-        $action = 'bulk-' . $this->_args['plural'];
-
-        if (empty($_POST['_wpnonce']) || ! wp_verify_nonce(sanitize_key($_POST['_wpnonce']), $action)) {
-            wp_die(esc_html('Security check failed!', 'ml-slider'));
-            return;
+        if (isset($_POST['_wpnonce']) && ! empty($_POST['_wpnonce'])) {
+            $nonce  = filter_input( INPUT_POST, '_wpnonce', FILTER_SANITIZE_STRING );
+            $action = 'bulk-' . $this->_args['plural'];
+            if ( ! wp_verify_nonce($nonce, $action)) {
+                wp_die( 'Nope! Security check failed!' );
+            }
         }
 
-        if ('delete' !== $this->current_action()) {
-            return;
+        if (isset($_POST['delete_all'])) {
+            $slideshows = $this->table_data('', 'trash');
+            foreach($slideshows as $slideshow_id) {
+                wp_delete_post($slideshow_id['ID'], true);
+            }
         }
 
-        $slideshows = isset($_REQUEST['slideshows']) ? $_REQUEST['slideshows'] : array();
-        if (empty($slideshows)) {
-            return;
+        if(isset($_GET['_wpnonce'])) {
+            if ( ! wp_verify_nonce($_GET['_wpnonce'], 'metaslider-action')) {
+                wp_die( 'Cannot process bulk and single actions' );
+            }
         }
 
-        foreach ($slideshows as $slideshow_id) {
-            wp_trash_post($slideshow_id);
+        $action = $this->current_action();
+        if(isset($_REQUEST['slideshows'])) {
+            if(is_array($_REQUEST['slideshows'])) {
+                $slideshows = array_map('intval', $_REQUEST['slideshows']);
+            } else {
+                $toArray = array($_REQUEST['slideshows']);
+                $slideshows = array_map('intval', $toArray);
+            }
+        } else {
+            //single slider
+            if(isset($_REQUEST['id'])) {
+                $toArray = array($_REQUEST['id']);
+                $slideshows = array_map('intval', $toArray);
+            }
         }
+        switch ( $action ) {
+            case 'delete':
+                foreach($slideshows as $slideshow_id) {
+                    wp_update_post(array(
+                        'ID' => $slideshow_id,
+                        'post_status' => 'trash'
+                    ));
+                }
+                break;
+            case 'permanent':
+                foreach($slideshows as $slideshow_id) {
+                    wp_delete_post( $slideshow_id, true);
+                }
+                break;
+            case 'restore':
+                foreach($slideshows as $slideshow_id) {
+                    wp_update_post(array(
+                        'ID' => $slideshow_id,
+                        'post_status' => 'publish'
+                    ));
+                }
+                break;
+            default:
+                return;
+                break;
+        }
+        return;
     }
 
-
-    private function table_data($search='')
+    private function table_data($search='', $status='all')
     {
         global $wpdb;
-        $wpdb_table = $wpdb->prefix . 'posts';
+        $wpdbTable = $wpdb->prefix . 'posts';
         $columns = ['slides', 'post_title', 'post_date'];
         $orderBy = isset($_GET['orderby']) && in_array($_GET['orderby'], $columns, true ) ? $_GET['orderby'] : 'ID';
-        $order = isset( $_GET['order'] ) && 'desc' === $_GET['order'] ? 'desc' : 'asc';
+        $order = isset($_GET['order']) && 'desc' === $_GET['order'] ? 'desc' : 'asc';
         $orderBySql = sanitize_sql_orderby( "{$orderBy} {$order}" );
+        $status = isset($_GET['post_status']) && 'trash' === $_GET['post_status'] ? 'trash' : 'all';
 
         if (!empty($search)) {
-            $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdb_table WHERE post_type = %s AND post_status = %s AND post_title LIKE %s ORDER BY $orderBySql", array('ml-slider', 'publish', '%'. $wpdb->esc_like($search). '%'));  // WPCS: unprepared SQL OK.
+            $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdbTable WHERE post_type = %s AND post_status = %s AND post_title LIKE %s ORDER BY $orderBySql", array('ml-slider', 'publish', '%'. $wpdb->esc_like($search). '%'));  // WPCS: unprepared SQL OK.
         } else {
-            $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdb_table WHERE post_type = %s AND post_status = %s ORDER BY $orderBySql", array('ml-slider', 'publish'));  // WPCS: unprepared SQL OK.
+            if( $status == 'all' ) {
+                $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdbTable WHERE post_type = %s AND post_status = %s ORDER BY $orderBySql", array('ml-slider', 'publish'));  // WPCS: unprepared SQL OK.
+            } else {
+                $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdbTable WHERE post_type = %s AND post_status = %s ORDER BY $orderBySql", array('ml-slider', 'trash'));  // WPCS: unprepared SQL OK.
+            }         
         }
 
         $query_results = $wpdb->get_results($slides_query, ARRAY_A ); // WPCS: unprepared SQL OK.
 
         return $query_results;
+    }
+
+    private function slideshow_count($status = 'all')
+    {
+        global $wpdb;
+        $wpdbTable = $wpdb->prefix . 'posts';
+        if ($status == 'trash') {
+            $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdbTable WHERE post_type = %s AND post_status = %s", array('ml-slider', 'trash'));  // WPCS: unprepared SQL OK.
+        } else {
+            $slides_query = $wpdb->prepare("SELECT ID, post_title, post_date FROM $wpdbTable WHERE post_type = %s AND post_status = %s", array('ml-slider', 'publish'));  // WPCS: unprepared SQL OK.
+        }
+
+        $wpdb->get_results($slides_query, ARRAY_A ); // WPCS: unprepared SQL OK.
+        return $wpdb->num_rows;
     }
 
     public function slideshow_thumb($slideshowId)
@@ -180,18 +279,46 @@ class MetaSlider_Admin_Table extends WP_List_table
     public function column_post_title($item)
     {
         $page = empty($_REQUEST['page']) ? 'metaslider' : sanitize_key($_REQUEST['page']);
+        if(isset($_GET['post_status']) && $_GET['post_status'] == 'trash') {
+            $restoreUrl = wp_nonce_url('?page=' . $page . '&post_status=trash&action=restore&slideshows=' . absint($item['ID']), 'metaslider-action' );
+            $deleteUrl = wp_nonce_url('?page=' . $page . '&post_status=trash&action=permanent&slideshows=' . absint($item['ID']), 'metaslider-action' );
 
-        $url = '?page=' . $page . '&id=' . absint($item['ID']);
-        $actions = [
-            'edit' => '<a href="' . esc_url($url) . '">' . esc_html__('Edit', 'ml-slider') . '</a>'
-        ];
+            $actions = [
+                'restore' => '<a href="' . esc_url($restoreUrl) . '">' . esc_html__('Restore', 'ml-slider') . '</a>',
+                'permanent'  => '<a class="submitdelete" href="' . esc_url($deleteUrl) . '">' . esc_html__('Delete Permanently', 'ml-slider') . '</a>',
+            ];
 
-        return sprintf(
-            '%1$s %2$s',
-            '<a class="row-title" href="' . esc_url($url) . '">' . esc_html($item['post_title']) . '</a>',
-            $this->row_actions($actions)
-        );
+            return sprintf(
+                '%1$s %2$s',
+                '<a class="row-title">' . esc_html($item['post_title']) . '</a>',
+                $this->row_actions($actions)
+            );
+        } else {
+            $editUrl = wp_nonce_url('?page=' . $page . '&id=' . absint($item['ID']), 'metaslider-action' );
+            $deleteUrl = wp_nonce_url('?page=' . $page . '&action=delete&slideshows=' . absint($item['ID']), 'metaslider-action' );
+
+            $actions = [
+                'edit' => '<a href="' . esc_url($editUrl) . '">' . esc_html__('Edit', 'ml-slider') . '</a>',
+                'trash'  => '<a class="submitdelete" href="' . esc_url($deleteUrl) . '">' . esc_html__('Trash', 'ml-slider') . '</a>',
+            ];
+
+            return sprintf(
+                '%1$s %2$s',
+                '<a class="row-title" href="' . esc_url($editUrl) . '">' . esc_html($item['post_title']) . '</a>',
+                $this->row_actions($actions)
+            );
+        }
     }
+
+    public function extra_tablenav( $which ) {
+		if ( $which == "top" ) {
+            if (isset($_REQUEST['post_status']) && $_REQUEST['post_status'] == "trash") {
+                if ( ! empty($this->table_data('', 'trash'))) {
+                    submit_button( __( 'Empty Trash' ), 'apply', 'delete_all', false );
+                }
+            }
+        }
+	}
 
     public function check_num_rows()
     {

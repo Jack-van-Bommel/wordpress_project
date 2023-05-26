@@ -87,6 +87,7 @@ class MetaSlider_Admin_Pages extends MetaSliderPlugin
             'create_slide_nonce' => wp_create_nonce('metaslider_create_slide'),
             'delete_slide_nonce' => wp_create_nonce('metaslider_delete_slide'),
             'undelete_slide_nonce' => wp_create_nonce('metaslider_undelete_slide'),
+            'permanent_delete_slide_nonce' => wp_create_nonce('metaslider_permanent_delete_slide'),
             'update_slide_image_nonce' => wp_create_nonce('metaslider_update_slide_image'),
             'useWithCaution' => esc_html__("Caution: This setting is for advanced developers only. If you're unsure, leave it checked.", "ml-slider"),
             'locale' => preg_replace('/[^a-z]/', '', get_locale()),
@@ -192,17 +193,22 @@ class MetaSlider_Admin_Pages extends MetaSliderPlugin
     {
         $listtable = new MetaSlider_Admin_Table();
         $listtable->prepare_items();
-        if (empty($listtable->check_num_rows())) {
+        if (isset($_REQUEST['post_status'])) {
             include METASLIDER_PATH . "admin/views/pages/parts/toolbar.php";
-            include METASLIDER_PATH . "admin/views/pages/start.php";
+            include METASLIDER_PATH . "admin/views/pages/dashboard.php";
         } else {
-            if (isset($_REQUEST['id'])) {
-                parent::render_admin_page();
-            } else {
+            if (empty($listtable->check_num_rows())) {
                 include METASLIDER_PATH . "admin/views/pages/parts/toolbar.php";
                 include METASLIDER_PATH . "admin/views/pages/dashboard.php";
+            } else {
+                if (isset($_REQUEST['id'])) {
+                    parent::render_admin_page();
+                } else {
+                    include METASLIDER_PATH . "admin/views/pages/parts/toolbar.php";
+                    include METASLIDER_PATH . "admin/views/pages/dashboard.php";
+                }
             }
-        } 
+        }
     }
 
     /**

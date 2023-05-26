@@ -5,7 +5,7 @@
  * Plugin Name: MetaSlider
  * Plugin URI:  https://www.metaslider.com
  * Description: Easy to use slideshow plugin. Create SEO optimised responsive slideshows with Nivo Slider, Flex Slider, Coin Slider and Responsive Slides.
- * Version:     3.30.1
+ * Version:     3.31.0
  * Author:      MetaSlider
  * Author URI:  https://www.metaslider.com
  * License:     GPL-2.0+
@@ -42,7 +42,7 @@ if (! class_exists('MetaSliderPlugin')) {
          *
          * @var string
          */
-        public $version = '3.30.1';
+        public $version = '3.31.0';
 
         /**
          * Pro installed version number
@@ -307,10 +307,12 @@ if (! class_exists('MetaSliderPlugin')) {
             add_action('media_upload_youtube', array($this, 'upgrade_to_pro_tab_youtube'));
             add_action('media_upload_post_feed', array($this, 'upgrade_to_pro_tab_post_feed'));
             add_action('media_upload_layer', array($this, 'upgrade_to_pro_tab_layer'));
+            add_action('media_upload_external_url', array($this, 'upgrade_to_pro_tab_external_url'));
 
             // TODO: Refactor to Slide class object
             add_action('wp_ajax_delete_slide', array($this, 'ajax_delete_slide'));
             add_action('wp_ajax_undelete_slide', array($this, 'ajax_undelete_slide'));
+            add_action('wp_ajax_permanent_delete_slide', array($this, 'ajax_permanent_delete_slide'));
 
             // Set date showing the first activation and redirect
             if (! get_option('ms_was_installed_on')) {
@@ -597,7 +599,7 @@ if (! class_exists('MetaSliderPlugin')) {
          */
         public function custom_media_upload_tab_name($tabs)
         {
-            $metaslider_tabs = array('post_feed', 'layer', 'youtube', 'vimeo');
+            $metaslider_tabs = array('post_feed', 'layer', 'youtube', 'vimeo', 'external_url');
 
             // restrict our tab changes to the MetaSlider plugin page
             if ((isset($_GET['page']) && $_GET['page'] == 'metaslider') || (isset($_GET['tab']) && in_array(
@@ -611,7 +613,8 @@ if (! class_exists('MetaSliderPlugin')) {
                         'post_feed' => __("Post Feed", "metaslider"),
                         'vimeo' => __("Vimeo", "metaslider"),
                         'youtube' => __("YouTube", "metaslider"),
-                        'layer' => __("Layer Slide", "metaslider")
+                        'layer' => __("Layer Slide", "metaslider"),
+                        'external_url' => __("External URL", "metaslider"),
                     );
                 }
 
@@ -885,6 +888,68 @@ if (! class_exists('MetaSliderPlugin')) {
         public function delete_slider()
         {
             return $this->api->delete_slideshow($_REQUEST);
+        }
+
+
+        /**
+         * Permanently delete a slide via ajax.
+         */
+        public function ajax_permanent_delete_slide()
+        {
+            if (! isset($_REQUEST['_wpnonce']) || ! wp_verify_nonce(
+                    sanitize_key($_REQUEST['_wpnonce']),
+                    'metaslider_permanent_delete_slide'
+                )) {
+                wp_send_json_error(array(
+                    'message' => __('The security check failed. Please refresh the page and try again.', 'ml-slider')
+                ), 401);
+            }
+
+            $capability = apply_filters('metaslider_capability', MetaSliderPlugin::DEFAULT_CAPABILITY_EDIT_SLIDES);
+            if (! current_user_can($capability)) {
+                wp_send_json_error(
+                    [
+                        'message' => __('Access denied', 'ml-slider')
+                    ],
+                    403
+                );
+            }
+
+            if (! isset($_POST['slide_id'])) {
+                wp_send_json_error(
+                    [
+                        'message' => __('Bad request', 'ml-slider'),
+                    ],
+                    400
+                );
+            }
+
+            $result = $this->permanent_delete_slide(absint($_POST['slide_id']));
+
+            if (is_wp_error($result)) {
+                wp_send_json_error(array(
+                    'message' => $result->get_error_message()
+                ), 409);
+            }
+
+            wp_send_json_success(array(
+                'message' => __('The slide was permanently deleted', 'ml-slider'),
+            ), 200);
+        }
+
+        /**
+         * Delete a slide by either trashing it or for
+         * legacy reasons removing the taxonomy relationship.
+         *
+         * @param int $slide_id The ID of the slide
+         * @param int $slideshow_id The ID of the slideshow
+         * @return mixed Will return the terms or WP_Error
+         */
+        public function permanent_delete_slide($slide_id)
+        {
+            if ('ml-slide' === get_post_type($slide_id)) {
+                return wp_delete_post($slide_id, true);
+            }
         }
 
         /**
@@ -1474,25 +1539,29 @@ if (! class_exists('MetaSliderPlugin')) {
                     } ?>
                     <div v-if="current && current.hasOwnProperty('id')" id='poststuff'
                          class="metaslider-inner wp-clearfix">
+                         <?php
+                            if (isset($_REQUEST['action']) && $_REQUEST['action'] == 'permanent') {
+                                echo '<div class="updated below-h2" id="message"><p>' . esc_html( 'Slide permanently deleted.', 'ml-slider'). '</p></div>';
+                            }
+                            if (isset($_REQUEST['action']) && $_REQUEST['action'] == 'restore') {
+                                echo '<div class="updated below-h2" id="message"><p>' . esc_html( 'Slide restored.', 'ml-slider'). '</p></div>';
+                            }
+                         ?>
                         <div class="my-6">
                             <?php
                             if (metaslider_viewing_trashed_slides($this->slider->id)) {
                                 // If they are on the trash page, show them
                                 ?>
-                                <h3 class="flex float-left m-0 mr-2"><i><svg xmlns="http://www.w3.org/2000/svg"
-                                                                             width="16" height="16" viewBox="0 0 24 24"
-                                                                             fill="none" stroke="currentColor"
-                                                                             stroke-width="2" stroke-linecap="round"
-                                                                             stroke-linejoin="round"
-                                                                             class="feather feather-trash-2"><polyline
-                                                    points="3 6 5 6 21 6"/><path
-                                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line
-                                                    x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14"
-                                                                                           y2="17"/></svg></i> <?php
-                                    esc_html_e('Trashed Slides', 'ml-slider'); ?></h3>
-                                <a href="<?php
-                                echo esc_url(admin_url("admin.php?page=metaslider&id={$this->slider->id}")); ?>"><?php
-                                    echo esc_html__('view active', 'ml-slider'); ?></a>
+                                <h1 class="-ml-4 h-16 pl-4 pr-12 text-2xl font-light rounded-none shadow-none bg-transparent border-0 border-l-4 border-transparent hover:border-gray-light hover:bg-white focus:bg-white focus:shadow-sm focus:border-gray-light rtl:border-l-0 rtl:border-r-0 rtl:ml-0 rtl:-mr-4 rtl:pl-12 rtl:pr-4"
+                                    style="line-height: 2.7em;">
+                                    <?php 
+                                    printf(
+                                        '%s (%s)',
+                                        esc_html__( get_the_title( $this->slider->id ) ),
+                                        esc_html__( 'Trashed Slides', 'ml-slider' )
+                                    ); 
+                                    ?>
+                                </h1>
                                 <?php
                             } else { ?>
                                 <metaslider-title></metaslider-title>
@@ -1533,19 +1602,23 @@ if (! class_exists('MetaSliderPlugin')) {
                                     <div class="notice-info"><?php
                                         printf(
                                             esc_html__(
-                                                'You are viewing slides that have been trashed, which will be automatically deleted in %s days. Click %shere%s to view active slides.',
+                                                'You are viewing slides that have been trashed, which will be automatically deleted in %s days.',
                                                 'ml-slider'
                                             ),
-                                            esc_html(EMPTY_TRASH_DAYS),
-                                            '<a href="' . esc_url(
-                                                admin_url("admin.php?page=metaslider&id={$this->slider->id}")
-                                            ) . '">',
-                                            '</a>'
+                                            esc_html(EMPTY_TRASH_DAYS)
                                         ); ?>
                                         <?php
                                         // TODO this is a temp fix to avoid a compatability check in pro
                                         echo "<input type='checkbox' style='display:none;' checked class='select-slider' rel='flex'></inpu>"; ?>
                                     </div>
+                                    </div>
+                                    <p>
+                                        <a href="<?php echo esc_url(
+                                                admin_url( "admin.php?page=metaslider&id={$this->slider->id}" )
+                                            ) ?>" class="button button-secondary">
+                                            <?php esc_html_e( 'Return to Published Slides', 'ml-slider' ) ?>
+                                        </a>
+                                    </p>
                                     <?php
                                 } else { ?>
                                     <metaslider-settings-viewer inline-template>
@@ -1735,9 +1808,10 @@ if (! class_exists('MetaSliderPlugin')) {
                                             // Also, render but hide the link in case we want to show
                                             // it when the user deletes their first slide
                                             $count = count(metaslider_has_trashed_slides($this->slider->id));
-                                            if (! metaslider_viewing_trashed_slides($this->slider->id)) { ?>
+                                            if (! metaslider_viewing_trashed_slides($this->slider->id)) {
+                                            ?>
                                                 <a <?php
-                                                echo $count ? '' : "style='display:none;'" ?> class="restore-slide-link tipsy-tooltip-top flex text-blue-dark hover:text-orange -mb-2 mt-1 -mr-2 rtl:float-left rtl:-ml-1 rtl:mr-0"
+                                                echo $count ? '' : "style='display:none;'" ?> class="restore-slide-link tipsy-tooltip-top text-blue-dark hover:text-orange -mb-2 mt-1 -mr-2 rtl:float-left rtl:-ml-1 rtl:mr-0"
                                                                                               title="<?php
                                                                                               esc_attr_e(
                                                                                                   'View trashed slides',
@@ -2356,35 +2430,26 @@ if (! class_exists('MetaSliderPlugin')) {
             $link .= '?utm_source=lite&amp;utm_medium=more-slide-types-layer&amp;utm_campaign=pro';
             $this->upgrade_to_pro_iframe(
                 array(
-                    '<img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/layers.png') . '" alt="" />',
-                    "<p>" . sprintf(
-                        esc_html_x(
-                            "Ideal for easily creating eye-catching presentations and slideshows using stunning effects with %s 30 animation options %s and a beautiful, easy to use interface.",
-                            'Translators: %s opens and closes a strong tag',
-                            'ml-slider'
-                        ),
-                        '<strong>',
-                        '</strong>'
-                    ) . " " . sprintf(
-                        _x(
-                            'Layers can include %1$s text, HTML, images, videos %2$s and even %1$s shortcodes%2$s!',
-                            'Translators: %1$s opens and %2$s closes a strong tag',
-                            'ml-slider'
-                        ),
-                        '<strong>',
-                        '</strong>'
+                    '<div class="left"><img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/layers.png') . '" alt="" /></div>',
+                    "<div><h2>" . esc_html__(
+                        'Create slides by adding text, videos and more to your images',
+                        'ml-slider'
+                    ) . "</h2>",
+                    "<p>" . esc_html__(
+                        'With Layer slides, you can create beautiful, stylish layers of different elements.',
+                        'ml-slider'
                     ) . "</p>",
                     "<p>" . esc_html__(
-                        "Additional optimization and customization options including using a video as the slide background, and adjusting the padding and background color of each layer.",
+                        'You start with an image and then can add text, video, colors, animations, more images, and even shortcodes.',
                         'ml-slider'
                     ) . "</p>",
                     '<a class="probutton button button-primary button-hero" href="' . esc_url(
                         $link
                     ) . '" target="_blank">' . esc_html__(
-                        'Find out more about all the features of MetaSlider Pro here',
+                        'Find out more about MetaSlider Pro',
                         'ml-slider'
-                    ) . "</a>",
-                    "<p>" . esc_html__('Opens in a new window', 'ml-slider') . "</p>"
+                    ) . "<span class='dashicons dashicons-external'></span></a>",
+                    "</div>"
                 )
             );
         }
@@ -2408,24 +2473,24 @@ if (! class_exists('MetaSliderPlugin')) {
             $link .= '?utm_source=lite&amp;utm_medium=more-slide-types-vimeo&amp;utm_campaign=pro';
             $this->upgrade_to_pro_iframe(
                 array(
-                    '<img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/vimeo.png') . '" alt="" />',
-                    "<h3>" . esc_html__(
-                        'Create a slideshow full of your favorite videos easily and quickly by simply adding a URL to a Vimeo slide.',
+                    '<div class="left"><img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/vimeo.png') . '" alt="" /></div>',
+                    "<div><h2>" . esc_html__(
+                        'Create slideshows with your Vimeo videos',
                         'ml-slider'
-                    ) . "</h3>",
+                    ) . "</h2>",
                     "<p>" . esc_html__(
-                        'Features include an automatic play/pause function, in which your slideshow will detect when you set a video to play and continue once the video has finished.',
+                        'With Vimeo slides, you can build beautiful slideshows with your Vimeo videos.',
                         'ml-slider'
                     ) . "</p>",
                     "<p>" . esc_html__(
-                        'You could even have the slider autoplay a video, giving you a smooth, completely automatic presentation!',
+                        'Vimeo slides will display your videos with auto play, mute, the ability to hide controls, and much more.',
                         'ml-slider'
                     ) . "</p>",
                     "<a class='probutton button button-primary button-hero' href='{$link}' target='_blank'>" . esc_html__(
-                        'Find out more about all the features of MetaSlider Pro here',
+                        'Find out more about MetaSlider Pro',
                         'ml-slider'
-                    ) . "</a>",
-                    "<p>" . esc_html__('Opens in a new window', 'ml-slider') . "</p>"
+                    ) . "<span class='dashicons dashicons-external'></span></a>",
+                    "</div>"
                 )
             );
         }
@@ -2449,24 +2514,24 @@ if (! class_exists('MetaSliderPlugin')) {
             $link .= '?utm_source=lite&amp;utm_medium=more-slide-types-youtube&amp;utm_campaign=pro';
             $this->upgrade_to_pro_iframe(
                 array(
-                    '<img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/youtube.png') . '" alt="" />',
-                    "<h3>" . esc_html__(
-                        'Create a slideshow full of your favorite videos easily and quickly by simply adding a URL to a YouTube slide.',
+                    '<div class="left"><img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/youtube.png') . '" alt="" /></div>',
+                    "<div><h2>" . esc_html__(
+                        'Create slideshows with your YouTube videos',
                         'ml-slider'
-                    ) . "</h3>",
+                    ) . "</h2>",
                     "<p>" . esc_html__(
-                        'Features include an automatic play/pause function, in which your slideshow will detect when you set a video to play and continue once the video has finished.',
+                        'With YouTube slides, you can build beautiful slideshows with your YouTube videos.',
                         'ml-slider'
                     ) . "</p>",
                     "<p>" . esc_html__(
-                        'You could even have the slider autoplay a video, giving you a smooth, completely automatic presentation!',
+                        'YouTube slides will display your videos with auto play, mute, lazy load, the ability to hide controls, and much more.',
                         'ml-slider'
                     ) . "</p>",
                     "<a class='probutton button button-primary button-hero' href='{$link}' target='_blank'>" . esc_html__(
-                        'Find out more about all the features of MetaSlider Pro here',
+                        'Find out more about MetaSlider Pro',
                         'ml-slider'
-                    ) . "</a>",
-                    "<p>" . esc_html__('Opens in a new window', 'ml-slider') . "</p>"
+                    ) . "<span class='dashicons dashicons-external'></span></a>",
+                    "</div>"
                 )
             );
         }
@@ -2490,31 +2555,69 @@ if (! class_exists('MetaSliderPlugin')) {
             $link .= '?utm_source=lite&amp;utm_medium=more-slide-types-feed&amp;utm_campaign=pro';
             $this->upgrade_to_pro_iframe(
                 array(
-                    '<img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/post-feed.png') . '" alt="" />',
-                    "<p>" . sprintf(
-                        esc_html_x(
-                            'Show off your %1$sblog posts%2$s, %1$sevents%2$s, %1$sWooCommerce products%2$s and other content with %1$sPost Feed%2$s.',
-                            'Translators: %1$s opens and %2$s closes a strong tag',
-                            'ml-slider'
-                        ),
-                        '<strong>',
-                        '</strong>'
-                    ) . "</p>",
+                    '<div class="left"><img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/post-feed.png') . '" alt="" /></div>',
+                    "<div><h2>" . esc_html__(
+                        'Create slideshows with your posts',
+                        'ml-slider'
+                    ) . "</h2>",
                     "<p>" . esc_html__(
-                        'Customise and control which post types you want to display, their order and how to restrict posts to certain tags or categories.',
+                        'With Post Feed slides, you can build slideshows with your latest posts, events, or WooCommerce products.',
                         'ml-slider'
                     ) . "</p>",
                     "<p>" . esc_html__(
-                        'Post Feed slides can also be used with other slide types to either show one post at a time or in a carousel mode, allowing you to show off a large number of your latest posts in a small amount of space.',
+                        'Post Feed slides will automatically display your posts with images, text, custom fields, and much more.',
                         'ml-slider'
                     ) . "</p>",
                     '<a class="probutton button button-primary button-hero" href="' . esc_url(
                         $link
                     ) . '" target="_blank">' . esc_html__(
-                        "Find out more about all the features of MetaSlider Pro here",
+                        "Find out more about MetaSlider Pro",
                         "ml-slider"
-                    ) . '</a>',
-                    "<p>" . esc_html__('Opens in a new window', 'ml-slider') . "</p>"
+                    ) . '<span class="dashicons dashicons-external"></span></a>',
+                    "</div>"
+                )
+            );
+        }
+
+        /**
+         * Return the MetaSlider pro upgrade iFrame
+         */
+        public function upgrade_to_pro_tab_external_url()
+        {
+            if (function_exists('is_plugin_active') && ! is_plugin_active('ml-slider-pro/ml-slider-pro.php')) {
+                return wp_iframe(array($this, 'upgrade_to_pro_iframe_external_url'));
+            }
+        }
+
+        /**
+         * Media Manager iframe HTML - External URL
+         */
+        public function upgrade_to_pro_iframe_external_url()
+        {
+            $link = apply_filters('metaslider_hoplink', 'https://www.metaslider.com/upgrade/');
+            $link .= '?utm_source=lite&amp;utm_medium=more-slide-types-external&amp;utm_campaign=pro';
+            $this->upgrade_to_pro_iframe(
+                array(
+                    '<div class="left"><img src="' . esc_url(METASLIDER_ADMIN_URL . 'images/upgrade/external-url.png') . '" alt="" /></div>',
+                    "<div ><h2>" . esc_html__(
+                        'Create slideshows with images stored outside of WordPress',
+                        'ml-slider'
+                    ) . "</h2>",
+                    "<p>" . esc_html__(
+                        'With External URL slides, you can load images directly from non-WordPress sources such as CDNs or image hosts.',
+                        'ml-slider'
+                    ) . "</p>",
+                    "<p>" . esc_html__(
+                        'External URL slides give you all the power of MetaSlider, using images stored anywhere you want.',
+                        'ml-slider'
+                    ) . "</p>",
+                    '<a class="probutton button button-primary button-hero" href="' . esc_url(
+                        $link
+                    ) . '" target="_blank">' . esc_html__(
+                        "Find out more about MetaSlider Pro",
+                        "ml-slider"
+                    ) . '<span class="dashicons dashicons-external"></span></a>',
+                    "</div>"
                 )
             );
         }
@@ -2526,7 +2629,7 @@ if (! class_exists('MetaSliderPlugin')) {
          */
         public function upgrade_to_pro_iframe($content)
         {
-            echo "<div style='padding:3rem;max-width:720px;margin:0 auto;text-align:center'>";
+            echo "<div class='ms-panel-container-ad'>";
             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
             echo implode("", $content);
             echo "</div>";
@@ -2639,7 +2742,14 @@ if (! class_exists('MetaSliderPlugin')) {
     if (! defined('METAGALLERY_ENABLE_DEV')) {
         define('METAGALLERY_ENABLE_DEV', false);
     }
-    if (file_exists(__DIR__ . '/metagallery/metagallery.php') && ! METAGALLERY_ENABLE_DEV) {
+
+    $global_settings = get_option( 'metaslider_global_settings' );
+
+    if ( file_exists(__DIR__ . '/metagallery/metagallery.php') 
+        && ! METAGALLERY_ENABLE_DEV 
+        && isset( $global_settings['gallery'] )
+        && (bool) $global_settings['gallery']
+    ) {
         if (! defined('METAGALLERY_TEXTDOMAIN')) {
             define('METAGALLERY_SIDELOAD_FROM', 'metaslider');
             define('METAGALLERY_TEXTDOMAIN', 'ml-slider');

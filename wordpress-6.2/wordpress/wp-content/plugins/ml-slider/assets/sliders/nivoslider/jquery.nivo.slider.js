@@ -157,7 +157,7 @@
                     if(!child.is('img')){
                         child = child.find('img:first');
                     }
-                    if(child.attr('data-thumb')) vars.controlNavEl.append('<a class="nivo-control" rels="'+ i +'"><img src="'+ child.attr('data-thumb') +'" alt="" /></a>');
+                    if(child.attr('data-thumb')) vars.controlNavEl.append('<a class="nivo-control" rels="'+ i +'"><img src="'+ child.attr('data-thumb') +'" alt="'+ child.attr('alt') +'" /></a>');
                 } else {
                     vars.controlNavEl.append('<a class="nivo-control" rel=”nofollow” rels="'+ i +'">'+ (i + 1) +'</a>');
                 }

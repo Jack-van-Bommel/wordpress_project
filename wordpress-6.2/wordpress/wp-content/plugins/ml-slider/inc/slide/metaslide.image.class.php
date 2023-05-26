@@ -320,8 +320,8 @@ class MetaImageSlide extends MetaSlide
         if (metaslider_this_is_trash($this->slide)) {
             $row .= '<div class="row-actions trash-btns">';
             $row .= "<span class='untrash'>{$this->get_undelete_button_html()}</span>";
-            // $row .= ' | ';
-            // $row .= "<span class='delete'>{$this->get_perminant_delete_button_html()}</span>";
+            $row .= ' | ';
+            $row .= "<span class='delete'>{$this->get_permanent_delete_button_html()}</span>";
             $row .= '</div>';
         } else {
             $row .= $edit_buttons;

@@ -1078,6 +1078,9 @@ input.no_last_pass {
 #slideshows-list table a {
 	color: #2271b1;
 }
+#slideshows-list table a.submitdelete {
+	color: #b32d2e;
+}
 #ms-toolbar h2 {
 	font-size: 21px;
 }
@@ -1093,9 +1096,18 @@ input.no_last_pass {
 #slideshows-list #slides {
 	width: 105px;
 }
+#slideshows-list .wp-heading-inline {
+	margin-bottom: 0 !important;
+}
 .default-thumb {
 	width: 70%;
 	margin: auto;
+}
+#metaslider-slides-list .untrash, #metaslider-slides-list .delete {
+	display: inline-block;
+}
+.trash-view-restore {
+	color: #2271b1;
 }
 @keyframes autoplaythumb {
     0% {opacity: 0.0}
@@ -1169,10 +1181,6 @@ input.no_last_pass {
     #slideshows-list {
         margin: 10px;
     }
-    p.search-box {
-        bottom: -85px;
-        width: 90%;
-    }
 }
 @media only screen and (min-width : 768px) {
     /* Quick Start */
@@ -1182,11 +1190,6 @@ input.no_last_pass {
     /* Dashboard */
     #slideshows-list {
         margin: 10px 30px;
-    }
-    p.search-box {
-        bottom: auto;
-        width: auto;
-        margin-top: -50px !important;
     }
 }
 @media only screen and (min-width : 990px) {

@@ -316,6 +316,23 @@ window.jQuery(function ($) {
         create_slides.on('close', function () {
             remove_image_apis()
         })
+
+        /**
+         * Add back "Update Slide Image" button text and button-primary class
+         * after saving image changes or going back from image-edit
+         * https://github.com/MetaSlider/metaslider/issues/448
+         */
+        update_slide_frame.on('all', function () { 
+            // Only in library screen
+            if(update_slide_frame.state().id === 'library') {
+                // Hide left menu (Actions)
+                update_slide_frame.$el.addClass('hide-menu');
+                // Add back text and class to the button
+                update_slide_frame.$el.find('.media-button-select')
+                    .text(update_slide_frame.options.button.text)
+                    .addClass('button-primary');
+            }
+        });
     })
 
     /**
@@ -488,7 +505,7 @@ window.jQuery(function ($) {
     });
 
     /**
-     * delete a slide using ajax (avoid losing changes)
+     * undelete a slide using ajax (avoid losing changes)
      */
     $(".metaslider").on('click', '.undo-delete-slide, .trash-view-restore', function (event) {
         event.preventDefault();
@@ -564,6 +581,67 @@ window.jQuery(function ($) {
                 // Fire the notice
                 // notice.fire(5000);
                 // @codingStandardsIgnoreEnd
+            }
+        });
+    });
+
+    /**
+     * delete a slide permanently using ajax (avoid losing changes)
+     */
+    $(".metaslider").on('click', '.trash-view-permanent', function (event) {
+        event.preventDefault();
+        var $this = $(this);
+        var data = {
+            action: 'permanent_delete_slide',
+            _wpnonce: metaslider.permanent_delete_slide_nonce,
+            slide_id: $this.data('slideId')
+        };
+
+        // Set the slider state to deleting
+        $this.parents('#slide-' + $this.data('slideId'))
+            .removeClass('ms-restored')
+            .addClass('ms-deleting')
+            .append('<div class="ms-delete-overlay"><i style="height:24px;width:24px"><svg class="ms-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-loader"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></i></div>');
+        $this.parents('#slide-' + $this.data('slideId'))
+            .find('.ms-delete-status')
+            .remove();
+
+        $.ajax({
+            url: metaslider.ajaxurl,
+            data: data,
+            type: 'POST',
+            error: function (response) {
+                // Delete failed. Remove delete state UI
+                alert(response.responseJSON.data.message);
+                $slide = $this.parents('#slide-' + $this.data('slideId'));
+                $slide.removeClass('ms-deleting');
+                $slide.find('.ms-delete-overlay').remove();
+            },
+            success: function (response) {
+                var count = 10;
+
+                // Remove deleting state and add a deleted state with restore option
+                setTimeout(function () {
+                    $slide = $this.parents('#slide-' + $this.data('slideId'));
+                    $slide.addClass('ms-deleted')
+                        .removeClass('ms-deleting')
+                        .find('.metaslider-ui-controls').append(
+                        '<button class="undo-delete-slide" title="' + metaslider.restore_language + '" data-slide-id="' + $this.data('slideId') + '">' + metaslider.restore_language + '</button>'
+                    );
+
+                    // Grab the image from the slide
+                    var img = $slide.find('.thumb').css('background-image')
+                        .replace(/^url\(["']?/, '')
+                        .replace(/["']?\)$/, '');
+
+                    // If the image is the same as the URL then it's empty (external slide type)
+                    img = (window.location.href === img) ? '' : img;
+
+                    // If the trash link isn't there, add it in (without counter)
+                    if ('none' == $('.restore-slide-link').css('display')) {
+                        $('.restore-slide-link').css('display', 'inline');
+                    }
+                }, 1000);
             }
         });
     });

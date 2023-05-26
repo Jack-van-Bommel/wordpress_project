@@ -2,7 +2,7 @@
 Contributors: andergmartins, htmgarcia, publishpress, stevejburge, rochdesigns
 Tags: slideshow, slider, image slider, carousel, gallery, flex slider, wordpress slider, nivoslider, rotating banner, image sliders, responsive slideshow, seo slideshow, unsplash, post sliders, video sliders, YouTube sliders, Vimeo sliders, HTML sliders, external URL sliders, layer sliders, best WordPress slider, best slider, best slideshow, best carousel, easy slider, easy slideshow, flex slider, woocommerce slider, woocommerce slideshow, video slider
 Requires at least: 3.5
-Stable tag: 3.30.1
+Stable tag: 3.31.0
 Requires PHP: 5.6
 Tested up to: 6.2
 License: GPLv2 or later
@@ -352,6 +352,23 @@ Our official name is MetaSlider. Don't worry - we'll still understand if you cal
 
 The format is based on [Keep a Changelog recommendations](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
+
+= [3.31.0] - 24 May, 2023 =
+
+* ADDED: Delete permanently slides and slideshows, #512, #496;
+* ADDED: New design for upsell screens, and promote External URL slide type, #259, #517, #518, #519, #520, #521, #522;
+* ADDED: Slideshow bulk delete, #493;
+* ADDED: Default CSS class to slider when no theme is selected, #226;
+* ADDED: Setting to enable/disable Gallery, #140;
+* CHANGED: Update FlexSlider plugin to 2.7.2, #492;
+* FIXED: Campaign link for External URL upsell screen, #514;
+* FIXED: Offset for FlexSlider, #487;
+* FIXED: "Update slide image" button disappears, #448;
+* FIXED: Caption from Unsplash images includes HTML, #486;
+* FIXED: Error "Conflict (409)" while editing an image, #459;
+* FIXED: Center arrow dots in Bubble theme, #479;
+* FIXED: Caption alignment in Bubble theme with NivoSlider, #449;
+* FIXED: Campaign link for External URL upsell screen, #514;
 
 = [3.30.1] - 03 May, 2023 =
 
